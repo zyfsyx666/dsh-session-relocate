@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>工作区对话迁移</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b35; --text: #e6e8ee; --muted: #8b93a5;
+    --accent: #4f8cff; --ok: #35c07a; --warn: #e0a33e; --err: #e8604c;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --line: #e2e5ea; --text: #1c1f26; --muted: #6b7280;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 220px; min-width: 0; }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  select, input[type=text] {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; width: 100%;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:last-child td { border-bottom: 0; }
+  .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.orphan { color: var(--warn); border-color: var(--warn); }
+  .tag.ok { color: var(--ok); border-color: var(--ok); }
+  .tag.err { color: var(--err); border-color: var(--err); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; max-height: 340px; }
+  .hidden { display: none; }
+  .scroll { max-height: 460px; overflow: auto; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>工作区对话迁移</h1>
+<p class="sub">
+  真迁移会话档案：保持 session id 与完整历史，只改写首帧 cwd；迁移前做字节级备份，失败自动回滚。
+</p>
+
+<div class="card">
+  <div class="row">
+    <div class="grow"><h2>默认工作区</h2><div id="default-ws" class="muted">加载中…</div></div>
+    <div><h2>会话 / 孤儿</h2><div id="counts" class="muted">—</div></div>
+    <div><button class="ghost" id="btn-doctor">自检</button></div>
+    <div><button class="ghost" id="btn-refresh">刷新</button></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>会话列表</h2>
+  <div class="row" style="margin-bottom:10px">
+    <div class="grow">
+      <select id="filter-ws"><option value="">全部工作区</option></select>
+    </div>
+    <div><button class="ghost" id="btn-check-all">全选默认工作区</button></div>
+    <div><button class="ghost" id="btn-uncheck">清空选择</button></div>
+    <div><button class="ghost" id="btn-suggest">分组建议</button></div>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th style="width:28px"></th><th>标题 / 首条消息</th><th>会话 id</th><th>大小</th><th>状态</th></tr></thead>
+      <tbody id="session-rows"><tr><td colspan="5" class="muted">加载中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>迁移目标</h2>
+  <div class="grid2">
+    <div>
+      <label class="muted">迁到已有工作区</label>
+      <select id="target-existing"><option value="">— 选择 —</option></select>
+    </div>
+    <div>
+      <label class="muted">迁到新建工作区（目录需已存在，可留空）</label>
+      <input type="text" id="target-new-path" placeholder="例如 D:\工作区\归档-2026-10" />
+      <input type="text" id="target-new-title" placeholder="工作区标题（可选）" style="margin-top:8px" />
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div><label class="muted"><input type="checkbox" id="keep-source" /> 保留源目录</label></div>
+    <div><button class="ghost" id="btn-plan">预演（不改数据）</button></div>
+    <div><button id="btn-move">迁移选中</button></div>
+  </div>
+</div>
+
+<div class="card hidden minds" id="report-card">
+  <h2>预演 / 执行结果</h2>
+  <pre id="report"></pre>
+</div>
+
+<div class="card">
+  <h2>分组建议（B2）</h2>
+  <div id="groups" class="muted">点「分组建议」按会话标题与首条用户消息聚类。</div>
+</div>
+
+<div class="card">
+  <h2>迁移历史与撤销（A5）</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>时间</th><th>会话</th><th>从</th><th>到</th><th>状态</th><th></th></tr></thead>
+      <tbody id="history-rows"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const CHANNEL = '/workspace-migration'
+let state = { overview: null, rows: [], selected: new Set(), history: null }
+
+async function call(endpoint, payload = {}) {
+  const res = await fetch(`${CHANNEL}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request',
+      rpcId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()),
+      method: endpoint,
+      payload,
+    }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+  const body = await res.json()
+  const result = body?.result
+  if (!result) throw new Error(body?.error?.message || '响应格式异常')
+  if (!result.ok) {
+    const e = new Error(result.error?.message || '调用失败')
+    e.code = result.error?.code
+    throw e
+  }
+  return result.value
+}
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const fmtBytes = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B')
+
+function targetPayload() {
+  const newPath = document.getElementById('target-new-path').value.trim()
+  const newTitle = document.getElementById('target-new-title').value.trim()
+  if (newPath) return { target: { kind: 'new', path: newPath, title: newTitle || undefined }, keepSource: document.getElementById('keep-source').checked }
+  const ws = document.getElementById('target-existing').value
+  if (ws) return { target: { kind: 'existing', workspaceId: ws }, keepSource: document.getElementById('keep-source').checked }
+  throw new Error('请选择目标工作区，或填写新建工作区目录')
+}
+
+async function loadOverview() {
+  const data = await call('overview')
+  state.overview = data
+  const def = data.defaultWorkspace
+  document.getElementById('default-ws').innerHTML = def
+    ? `<div>${esc(def.title)} <span class="tag">${def.sessionCount} 个会话</span></div><div class="mono muted">${esc(def.path)}</div>`
+    : '<span class="tag err">未找到默认工作区</span>'
+
+  const filter = document.getElementById('filter-ws')
+  const existing = document.getElementById('target-existing')
+  filter.innerHTML = '<option value="">全部工作区</option>'
+  existing.innerHTML = '<option value="">— 选择 —</option>'
+  for (const ws of data.workspaces) {
+    filter.insertAdjacentHTML('beforeend', `<option value="${esc(ws.workspaceId)}">${esc(ws.title)}（${ws.sessionCount}）</option>`)
+    const isDefault = def && ws.workspaceId === def.workspaceId
+    existing.insertAdjacentHTML(
+      'beforeend',
+      `<option value="${esc(ws.workspaceId)}"${isDefault ? ' disabled' : ''}>${esc(ws.title)} — ${esc(ws.path)}${isDefault ? '（默认，不可作为目标）' : ''}</option>`,
+    )
+  }
+}
+
+async function loadSessions() {
+  const workspaceId = document.getElementById('filter-ws').value || undefined
+  const data = await call('sessions', { workspaceId })
+  state.rows = data.rows
+  document.getElementById('counts').textContent = `${data.rows.length} 个会话 / ${data.orphanCount} 个孤儿`
+  renderSessions()
+}
+
+function renderSessions() {
+  const tbody = document.getElementById('session-rows')
+  if (!state.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">没有会话</td></tr>'
+    return
+  }
+  tbody.innerHTML = state.rows
+    .map((row) => {
+      const p = row.profile || {}
+      const title = p.title || (p.firstUserText ? p.firstUserText.slice(0, 40) : '（无标题）')
+      const tags = []
+      if (row.orphan) tags.push('<span class="tag orphan">孤儿</span>')
+      if (p.corrupt) tags.push('<span class="tag err">日志损坏</span>')
+      else tags.push('<span class="tag ok">健康</span>')
+      return `<tr>
+        <td><input type="checkbox" data-id="${esc(row.sessionId)}" ${state.selected.has(row.sessionId) ? 'checked' : ''} /></td>
+        <td>${esc(title)}<div class="mono muted">${esc(p.cwd || '')}</div></td>
+        <td class="mono">${esc(row.sessionId)}</td>
+        <td class="muted">${fmtBytes(row.size)}<div class="mono">${p.frames ?? '?'} 帧</div></td>
+        <td>${tags.join(' ')}</td>
+      </tr>`
+    })
+    .join('')
+  for (const box of tbody.querySelectorAll('input[type=checkbox]')) {
+    box.addEventListener('change', (event) => {
+      const id = event.target.dataset.id
+      if (event.target.checked) state.selected.add(id)
+      else state.selected.delete(id)
+    })
+  }
+}
+
+async function loadHistory() {
+  const data = await call('history')
+  state.history = data
+  const tbody = document.getElementById('history-rows')
+  if (!data.migrations.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">还没有迁移记录</td></tr>'
+    return
+  }
+  tbody.innerHTML = data.migrations
+    .map(
+      (m) => `<tr>
+        <td class="muted">${esc(new Date(m.at).toLocaleString())}</td>
+        <td class="mono">${esc(m.sessionId)}</td>
+        <td class="mono muted">${esc(m.from?.path || '')}</td>
+        <td class="mono muted">${esc(m.to?.path || '')}</td>
+        <td>${m.undone ? '<span class="tag">已撤销</span>' : '<span class="tag ok">已迁移</span>'}${m.sourceKeptReason ? `<div class="muted" style="font-size:11px">${esc(m.sourceKeptReason)}</div>` : ''}</td>
+        <td>${m.undone ? '' : `<button class="ghost" data-undo="${esc(m.id)}">撤销</button>`}</td>
+      </tr>`,
+    )
+    .join('')
+  for (const btn of tbody.querySelectorAll('button[data-undo]')) {
+    btn.addEventListener('click', async () => {
+      if (!confirm('撤销这次迁移？会用备份还原源目录，并删除目标目录。')) return
+      try {
+        await call('undo', { migrationId: btn.dataset.undo })
+        await loadHistory()
+        await loadSessions()
+        showReport({ undo: '已撤销', migrationId: btn.dataset.undo })
+      } catch (error) {
+        showReport({ error: error.message, code: error.code })
+      }
+    })
+  }
+}
+
+function showReport(value) {
+  document.getElementById('report-card').classList.remove('hidden')
+  document.getElementById('report').textContent = JSON.stringify(value, null, 2)
+}
+
+async function runPlan() {
+  const ids = [...state.selected]
+  if (!ids.length) throw new Error('先勾选至少一个会话')
+  const out = []
+  for (const sessionId of ids) out.push(await call('plan', { sessionId, ...targetPayload() }))
+  showReport(out)
+}
+
+async function runMove() {
+  const ids = [...state.selected]
+  if (!ids.length) throw new Error('先勾选至少一个会话')
+  const payload = targetPayload()
+  const report = ids.length === 1
+    ? await call('move', { sessionId: ids[0], ...payload })
+    : await call('batch', { sessionIds: ids, ...payload })
+  showReport(report)
+  state.selected.clear()
+  await loadSessions()
+  await loadHistory()
+}
+
+async function runSuggest() {
+  const data = await call('groups', {})
+  const box = document.getElementById('groups')
+  if (!data.suggestions.length) {
+    box.innerHTML = '<span class="muted">没有形成 2 条以上的主题簇；可继续手工勾选迁移。</span>'
+    return
+  }
+  box.innerHTML = data.suggestions
+    .map(
+      (g) => `<div style="margin-bottom:12px">
+        <div><strong>${esc(g.label)}</strong> <span class="tag">${g.size} 个会话</span> <span class="tag">${g.kind === 'day' ? '按天归档' : '主题聚类'}</span></div>
+        <div class="mono muted">建议新建：${esc(g.suggestedDirectory)}</div>
+        <div class="mono muted" style="font-size:11px">${g.sessionIds.map(esc).join('<br>')}</div>
+      </div>`,
+    )
+    .join('')
+}
+
+const wrap = (fn) => async () => {
+  try {
+    await fn()
+  } catch (error) {
+    showReport({ error: error.message, code: error.code })
+  }
+}
+
+document.getElementById('btn-refresh').addEventListener('click', wrap(async () => {
+  await loadOverview()
+  await loadSessions()
+  await loadHistory()
+}))
+document.getElementById('btn-check-all').addEventListener('click', () => {
+  const def = state.overview?.defaultWorkspace
+  for (const row of state.rows) {
+    if (!def || row.workspaceId === def.workspaceId) state.selected.add(row.sessionId)
+  }
+  renderSessions()
+})
+document.getElementById('btn-uncheck').addEventListener('click', () => {
+  state.selected.clear()
+  renderSessions()
+})
+document.getElementById('btn-plan').addEventListener('click', wrap(runPlan))
+document.getElementById('btn-move').addEventListener('click', wrap(runMove))
+document.getElementById('btn-suggest').addEventListener('click', wrap(runSuggest))
+document.getElementById('btn-doctor').addEventListener('click', wrap(async () => showReport(await call('doctor'))))
+document.getElementById('filter-ws').addEventListener('change', wrap(loadSessions))
+
+wrap(async () => {
+  await loadOverview()
+  await loadSessions()
+  await loadHistory()
+})()
+</script>
+</body>
+</html>
