@@ -1,4 +1,4 @@
-# dsh-workspace-migration
+# dsh-session-relocate
 
 在 DSH（DeepSeek Harness）里**安全迁移会话**：把 `default-workspace` 里堆积的对话，批量搬到已有工作区或新建工作区。真迁移——保持 session id 与完整历史，只改写首帧 `cwd`；迁移前做字节级备份，失败自动回滚，支持一键撤销。
 
@@ -22,17 +22,17 @@
 方式一（推荐）：把本目录打成 tgz 后用插件管理器安装。
 
 ```powershell
-cd dsh-workspace-migration
-npm pack                       # 产出 dsh-workspace-migration-0.1.0.tgz
+cd dsh-session-relocate
+npm pack                       # 产出 dsh-session-relocate-0.1.0.tgz
 # 然后在 DSH 的插件管理器（dshmarket / plugin-manager）里从本地包安装
 ```
 
 方式二（手工挂载，不依赖插件管理器）：
 
-1. 把 `dsh-workspace-migration` 整个目录复制到任意位置（例如 `<DSH_HOME>\` 下）；
+1. 把 `dsh-session-relocate` 整个目录复制到任意位置（例如 `<DSH_HOME>\` 下）；
 2. 在 profile 的 `package.json`（`~/.dsh/profiles/desktop/package.json`）里：
-   - `dependencies` 加 `"dsh-workspace-migration": "file:C:/Users/38869/.dsh/dsh-workspace-migration"`（按实际路径）；
-   - `dsh.profile.bundles` 数组追加 `"dsh-workspace-migration"`；
+   - `dependencies` 加 `"dsh-session-relocate": "file:C:/Users/38869/.dsh/dsh-session-relocate"`（按实际路径）；
+   - `dsh.profile.bundles` 数组追加 `"dsh-session-relocate"`；
 3. 在 profile 目录执行 `pnpm install`（profile 用 pnpm，`nodeLinker: hoisted`）；
 4. 重启 DSH。
 
@@ -70,7 +70,7 @@ npm pack                       # 产出 dsh-workspace-migration-0.1.0.tgz
 
 ## 安全设计
 
-1. **先备份再动手**：源日志先字节级复制到 `<DSH_HOME>/storages/dsh-workspace-migration-backup/`，备份失败则全程中止，什么都还没改。
+1. **先备份再动手**：源日志先字节级复制到 `<DSH_HOME>/storages/dsh-session-relocate-backup/`，备份失败则全程中止，什么都还没改。
 2. **目标先 .partial 后 rename**：新日志写到目标父目录内的 `.partial-<pid>` 临时目录，读回校验（id、cwd、帧数、尾部字节）通过才原子 rename——同盘 rename 是原子的，断电也不会半写。
 3. **注册表单次原子写**：备份后先改文件、再一次性写注册表（临时文件 + rename），失败自动删掉刚发布的新目录并抛错，源从未被破坏。
 4. **默认删源，可选保留**：勾选"保留源"时源目录原样留在原地（会成为孤儿，可在孤儿区归位）。
