@@ -1,12 +1,12 @@
-# dsh-workspace-migration bundle patch
+# dsh-session-relocate bundle patch
 #
 # 手工挂载等价写法（profile 的 cordis.patch.yml）：
 #
 #   - insert:
-#       - id: workspace-migration
-#         name: 'dsh-workspace-migration'
+#       - id: session-relocate
+#         name: 'dsh-session-relocate'
 #
 # 单包单插件，无配置项。
 - insert:
-    - id: workspace-migration
-      name: 'dsh-workspace-migration'
+    - id: session-relocate
+      name: 'dsh-session-relocate'
