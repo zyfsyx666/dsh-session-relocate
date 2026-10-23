@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-relocate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 DSH 里安全迁移会话：预演、健康预检、跨盘降级、批量迁移、迁移历史与一键撤销、孤儿会话归位、智能分组建议。",
   "type": "module",
   "main": "lib/index.js",
@@ -42,10 +42,18 @@
     "@deepseek-ai/dsh-tools": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-workspace": { "optional": true },
-    "@deepseek-ai/dsh-session-persistence": { "optional": true },
-    "@deepseek-ai/dsh-tools": { "optional": true }
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-workspace": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-persistence": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
   },
   "license": "MIT",
   "dsh": {
